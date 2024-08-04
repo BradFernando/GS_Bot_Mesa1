@@ -1,0 +1,11 @@
+{
+    "greeting_message": "{greeting}, {user_first_name}. Me llamo BotMesero, estoy aquí para ayudarte en la toma de pedidos el día de hoy. Para poder avanzar, permíteme mostrarte la ID de este chat: \n\n{chat_id}\n\nNecesito que la guardes para el momento que uses el aplicativo.🤖🦾",
+    "menu_message": "Para poder avanzar, elige una opción ⬇:",
+    "pedido_response": "Para realizar un pedido, usarás una MiniApp 🥸📲:\n1. En la esquina inferior izquierda alado de la caja de envio de mensajes encontrarás un botón de Menú.\n2. El boton de llevará la ventana del menu donde esogerás todos los pedidos que desees o requieras.\n3. Deberás tener en cuenta el valor del pago en los pedidos asi que se cuidadoso de no pasarte de tu presupuesto.\n4. Al momento de enviar los pedidos en caja analizarán tu pedido procura ser paciente.\n5. Si tu pago es en transferencia el cajero analizará el comprobante de pago que hayas cargado, recuerda debe ser una captura de pantalla clara y legible, si lo haces mal deberás repetir tu pedido.\n6. Si tu pago es en efectivo puedes acercarte en caja a pagar, informa al cajero cual es tu ID, y si tienes alguna pregunta realizala.",
+    "other_questions_message": "Preguntas acerca del Bot 🤖⁉:",
+    "tiempo_pedido_response": "Tu pedido demorará dependiendo la complejidad de la preparación del mismo no puede sobrepasar los 15 minutos si algo sucede informa algun encargado del establecimiento.",
+    "producto_mas_pedido_response": "El producto más pedido es: {producto_mas_pedido}.",
+    "orden_mal_response": "Tus ordenes se reciben y tienes un rango de 5 minutos para realizar el pago sino el tiempo se considerará como excedido y el cajero eliminará tu orden, deberás crear otra nuevamente.",
+    "app_no_abre_response": "Si la aplicación no abre, verifica que tienes conexión a Internet y que tienes la última versión instalada.",
+    "info_proporcionada_response": "Se proporciona información básica para poder ayudarte en lo que necesites, si requieres más ayuda contacta a un encargado del establecimiento."
+}
