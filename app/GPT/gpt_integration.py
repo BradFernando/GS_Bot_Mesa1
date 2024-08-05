@@ -34,7 +34,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         r'\bmen[úu]\b',  # Detectar variaciones de "menú"
         r'\bcarta\b',  # "carta" como sinónimo de menú
         r'\bver opciones\b',  # frases como "ver opciones"
-        r'\bver menú'  # frases como "ver menú"
+        r'\bver men[úu]',  # frases como "ver menú"
+        r'\bver carta\b'  # frases como "ver carta"
     ]
 
     most_ordered_product_patterns = [
