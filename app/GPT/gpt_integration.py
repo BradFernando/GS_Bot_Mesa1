@@ -104,6 +104,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         r'\bcu[aá]l es el plato más vendido\b',
         r'\bcu[aá]l es el plato más popular\b',
         r'\bcu[aá]l es el plato más pedido\b',
+        r'\bqu[eé] almuerzo me recomiendas\b',
+        r'\bqu[eé] almuerzo es bueno\b',
+        r'\bqu[eé] almuerzo es económico\b',
     ]
 
     # Define patrones de recomendación para cada categoría
