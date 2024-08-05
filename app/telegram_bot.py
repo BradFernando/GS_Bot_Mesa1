@@ -11,6 +11,9 @@ from app.config import settings
 
 logger = setup_logging()
 
+# Se define el nombre del bot aquí
+bot_name = "MesaBot"
+
 
 # Function to get the greeting based on the current time
 def get_greeting() -> str:
@@ -38,7 +41,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.warning("Update does not have message or callback_query")
         return  # Exit if neither condition is met
 
-    bot_name = "BotMesero"
     greeting = get_greeting()
 
     # Log the chat_id to ensure it's being captured correctly
@@ -48,7 +50,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     greeting_message = responses["greeting_message"].format(
         greeting=greeting,
         user_first_name=user_first_name,
-        chat_id=f"`{chat_id}`"  # Usa backticks para formato de código
+        chat_id=f"`{chat_id}`",  # Usa backticks para formato de código
+        bot_name=bot_name
     )
 
     if isinstance(update, Update) and update.message:
