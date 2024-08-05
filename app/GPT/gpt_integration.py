@@ -1,10 +1,10 @@
 import os
+import re
 import openai
 from telegram import Update
 from telegram.ext import ContextTypes
-import re
 
-from app.utils.rules import rules  # Importa correctamente
+from app.utils.rules import rules
 from app.utils.keyboards import show_categories, show_most_ordered_product, show_most_sold_drink, \
     show_most_sold_sport_drink, show_most_sold_breakfast, show_most_sold_starter, show_most_sold_second, \
     show_most_sold_snack, recommend_drink_by_price, recommend_sport_drink_by_price, recommend_breakfast_by_price, \
@@ -23,6 +23,7 @@ system_context = {
 }
 
 
+# Manejador de mensajes de texto
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Maneja los mensajes de texto entrantes de los usuarios."""
     user_message = update.message.text.lower()  # Convertir a minúsculas para coincidencia de patrones
@@ -267,7 +268,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     try:
         # Enviar el historial de mensajes al modelo GPT-3.5-turbo para obtener una respuesta
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # Puedes usar "gpt-4" si tienes acceso a ese modelo
+            model="gpt-3.5-turbo",
             messages=messages
         )
 
