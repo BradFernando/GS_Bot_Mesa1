@@ -355,7 +355,7 @@ async def handle_response_by_category(update: Update, patterns, handler_function
 # Manejador de mensajes de texto
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Maneja los mensajes de texto entrantes de los usuarios."""
-    if context.chat_data.get("session_closed", False):  # La sesión está cerrada por defecto si no se ha establecido
+    if context.chat_data.get("session_closed", True):  # La sesión está cerrada por defecto si no se ha establecido
         await update.message.reply_text("La sesión ha terminado. Para empezar de nuevo, escribe /start.")
         return
 
