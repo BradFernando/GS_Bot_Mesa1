@@ -92,7 +92,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if query.data == "salir":
         # Iniciar el proceso de calificación
         await handle_rating(update, context)
-        context.chat_data["session_closed"] = True
         return  # Para detener el flujo y esperar la calificación
     elif query.data == "menu":
         await show_categories(query)
@@ -137,6 +136,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif query.data == "return_categories":
         logger.info("Returning to categories")
         await show_categories(query)
+
 
 
 def run_bot():

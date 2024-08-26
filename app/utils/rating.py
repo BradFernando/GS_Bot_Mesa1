@@ -25,7 +25,6 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         chat_id = update.message.chat_id
         reply_function = update.message.reply_text
 
-    # No cerrar la sesión aquí, permitir que el flujo de calificación continúe
     await reply_function(
         "Califica nuestro sistema y tu experiencia:\n1. ⭐️\n2. ⭐️⭐️\n3. ⭐️⭐️⭐️\n4. ⭐️⭐️⭐️⭐️\n5. ⭐️⭐️⭐️⭐️⭐️"
     )
@@ -75,9 +74,10 @@ async def handle_comment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         context.user_data['awaiting_comment'] = False
 
         await update.message.reply_text(
-            "Gracias, tus comentarios nos ayudan a mejorar nuestra atención a los clientes.")
+            "Gracias, tus comentarios nos ayudan a mejorar nuestra atención a los clientes."
+        )
 
-        # Ahora sí cerramos la sesión
+        # Ahora cerramos la sesión al final del flujo
         await exit_chat(update, context)
 
 
@@ -105,7 +105,6 @@ async def exit_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 logger.warning(f"Message identifier is not specified for message: {message}")
         del context.chat_data["conversation_history"]
 
-    # Cerrar la sesión después de enviar el mensaje de despedida
     await update.message.reply_text(
         "Gracias por preferirnos. ¡Hasta pronto 👋! Recuerda que para volver a ingresar "
         "puedes presionar el botón de este enlace para ejecutar el comando /start.👈",
