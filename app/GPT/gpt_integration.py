@@ -15,6 +15,7 @@ from app.utils.keyboards import (show_categories, show_most_ordered_product, sho
                                  show_product_price_by_name, show_most_sold_main, show_products_by_category_name,
                                  show_lunch_products)
 from app.utils.logging_config import setup_logging
+from app.utils.rating import handle_comment, handle_rating
 from app.utils.rules import rules
 
 logger = setup_logging()
@@ -362,6 +363,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     user_message = update.message.text.lower()  # Convertir a minúsculas para coincidencia de patrones
     logger.info(f"Received message from user: {user_message}")
 
+    if context.user_data.get('awaiting_rating') or context.user_data.get('awaiting_comment'):
+        await handle_comment(update, context)
+        return
+
     # Guardar el mensaje del usuario en el historial con su message_id
     chat_id = update.message.chat_id
     if "conversation_history" not in context.chat_data:
@@ -379,7 +384,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     # Verificar si el mensaje coincide con los patrones de salida
     if match_pattern(EXIT_PATTERNS, user_message):
-        await exit_chat(update, context)
+        await handle_rating(update, context)
         return
 
     # 1. Verificar si corresponde a una acción específica

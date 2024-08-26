@@ -6,6 +6,7 @@ from app.GPT.gpt_integration import handle_text
 from app.config import settings
 from app.utils.keyboards import get_otros_keyboard, show_categories, show_products, show_most_ordered_product
 from app.utils.logging_config import setup_logging
+from app.utils.rating import handle_rating, handle_comment
 from app.utils.responses import responses
 
 logger = setup_logging()
@@ -83,12 +84,17 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     chat_id = query.message.chat_id
 
-    if context.chat_data.get("session_closed"):
-        # Ignorar cualquier acción si la sesión está cerrada
+    # Verificar si la sesión está cerrada
+    if context.chat_data.get("session_closed", False):
         await query.message.reply_text("La sesión ha terminado. Para empezar de nuevo, escribe /start.")
         return
 
-    if query.data == "menu":
+    if query.data == "salir":
+        # Iniciar el proceso de calificación
+        await handle_rating(update, context)
+        context.chat_data["session_closed"] = True
+        return  # Para detener el flujo y esperar la calificación
+    elif query.data == "menu":
         await show_categories(query)
     elif query.data.startswith("category_"):
         category_id = int(query.data.split("_")[1])
@@ -101,15 +107,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif query.data == "otros":
         reply_markup = get_otros_keyboard()
         await query.edit_message_text(text=responses["other_questions_message"], reply_markup=reply_markup)
-    elif query.data == "salir":
-        # Marcar la sesión como cerrada
-        context.chat_data["session_closed"] = True
-        if chat_id in greeting_messages:
-            greeting_message_id = greeting_messages[chat_id]["greeting_message_id"]
-            await context.bot.delete_message(chat_id=chat_id, message_id=greeting_message_id)
-            del greeting_messages[chat_id]
-        await query.message.delete()  # Delete the message containing the keyboard
-        await query.message.reply_text(text="Gracias por usar el bot. ¡Hasta luego!")
     elif query.data == "tiempo_pedido":
         response = responses["tiempo_pedido_response"]
         keyboard = [[InlineKeyboardButton("Regresar a las Preguntas ↩", callback_data="return_otros")]]
@@ -147,4 +144,5 @@ def run_bot():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    application.add_handler(MessageHandler(filters.TEXT, handle_comment))  # Para manejar los comentarios
     application.run_polling()
