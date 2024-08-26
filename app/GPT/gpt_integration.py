@@ -1,15 +1,19 @@
 import os
 import re
+
 import openai
 from telegram import Update
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
+
 from app.utils.keyboards import (show_categories, show_most_ordered_product, show_most_sold_drink,
                                  show_most_sold_sport_drink, show_most_sold_breakfast, show_most_sold_starter,
                                  show_most_sold_second, show_most_sold_snack, recommend_drink_by_price,
                                  recommend_sport_drink_by_price, recommend_breakfast_by_price,
                                  recommend_starter_by_price, recommend_second_by_price, recommend_snack_by_price,
                                  show_product_by_name, show_product_stock_by_name, show_product_stock_by_productname,
-                                 show_product_price_by_name, show_most_sold_main)
+                                 show_product_price_by_name, show_most_sold_main, show_products_by_category_name,
+                                 show_lunch_products)
 from app.utils.logging_config import setup_logging
 from app.utils.rules import rules
 
@@ -29,68 +33,79 @@ MENU_PATTERNS = [
     r'\bmen[úu]\b', r'\bcarta\b', r'\bver opciones\b', r'\bver men[úu]\b', r'\bver carta\b'
 ]
 
+# Expresiones regulares para obtener el producto más pedido
 MOST_ORDERED_PRODUCT_PATTERNS = [
     r'\bproducto m[aá]s pedido\b', r'\borden m[aá]s pedida\b', r'\bproducto m[aá]s vendido\b',
-    r'\borden m[aá]s vendida\b', r'\bcu[aá]l es el producto más pedido\b'
+    r'\borden m[aá]s vendida\b', r'\bcu[aá]l es el producto más pedido\b', r'\bcu[aá]l es el producto m[aá]s popular\b',
 ]
 
 MOST_SOLD_DRINK_PATTERNS = [
     r'\bbebida m[aá]s vendida\b', r'\bbebida m[aá]s popular\b', r'\bbebida m[aá]s pedida\b',
-    r'\bcu[aá]l es la bebida más vendida\b', r'\bcu[aá]l es la bebida más popular\b'
+    r'\bcu[aá]l es la bebida más vendida\b', r'\bcu[aá]l es la bebida más popular\b',
+    r'\bcu[aá]l es la bebida más pedida\b', r'\bcu[aá]l es la bebida más solicitada\b',
+    r'[Qq]u[eé] bebida es la m[aá]s vendida\b', r'[Qq]u[eé] bebida es la m[aá]s popular\b'
 ]
 
 MOST_SOLD_SPORT_DRINK_PATTERNS = [
     r'\bbebida deportiva m[aá]s vendida\b', r'\bbebida deportiva m[aá]s popular\b',
     r'\bbebida deportiva m[aá]s pedida\b',
-    r'\bcu[aá]l es la bebida deportiva más vendida\b', r'\bcu[aá]l es la bebida deportiva más popular\b'
+    r'\bcu[aá]l es la bebida deportiva más vendida\b', r'\bcu[aá]l es la bebida deportiva más popular\b',
+    r'\bcu[aá]l es la bebida deportiva más pedida\b', r'\bcu[aá]l es la bebida deportiva más solicitada\b',
+    r'[Qq]u[eé] bebida deportiva es la m[aá]s vendida\b', r'[Qq]u[eé] bebida deportiva es la m[aá]s popular\b'
 ]
 
 MOST_SOLD_BREAKFAST_PATTERNS = [
     r'\bdesayuno m[aá]s vendido\b', r'\bdesayuno m[aá]s popular\b', r'\bdesayuno m[aá]s pedido\b',
-    r'\bcu[aá]l es el desayuno más vendido\b', r'\bcu[aá]l es el desayuno más popular\b'
+    r'\bcu[aá]l es el desayuno m[aá]s vendido\b', r'\bcu[aá]l es el desayuno m[aá]s popular\b',
+    r'\bcu[aá]l es el desayuno m[aá]s pedido\b', r'\bcu[aá]l es el desayuno m[aá]s solicitado\b',
+    r'[Qq]u[eé] desayuno es el m[aá]s vendido\b', r'[Qq]u[eé] desayuno es el m[aá]s popular\b'
+
 ]
 
 MOST_SOLD_STARTER_PATTERNS = [
     r'\bentrada m[aá]s vendida\b', r'\bentrada m[aá]s popular\b', r'\bentrada m[aá]s pedida\b',
-    r'\bcu[aá]l es la entrada más vendida\b', r'\bcu[aá]l es la entrada más popular\b'
+    r'\bcu[aá]l es la entrada m[aá]s vendida\b', r'\bcu[aá]l es la entrada más popular\b',
+    r'\bcu[aá]l es la entrada m[aá]s pedida\b', r'\bcu[aá]l es la entrada más solicitada\b',
+    r'[Qq]u[eé] entrada es la m[aá]s vendida\b', r'[Qq]u[eé] entrada es la m[aá]s popular\b'
 ]
 
 MOST_SOLD_SECOND_COURSE_PATTERNS = [
     r'\bsegundo m[aá]s vendido\b', r'\bsegundo m[aá]s popular\b', r'\bsegundo m[aá]s pedido\b',
-    r'\bcu[aá]l es el segundo más vendido\b', r'\bcu[aá]l es el segundo más popular\b'
+    r'\bcu[aá]l es el segundo más vendido\b', r'\bcu[aá]l es el segundo más popular\b',
+    r'\bcu[aá]l es el segundo más pedido\b', r'\bcu[aá]l es el segundo más solicitado\b',
+    r'[Qq]u[eé] segundo es el m[aá]s vendido\b', r'[Qq]u[eé] segundo es el m[aá]s popular\b'
 ]
 
 MOST_SOLD_SNACK_PATTERNS = [
     r'\bsnack m[aá]s vendido\b', r'\bsnack m[aá]s popular\b', r'\bsnack m[aá]s pedido\b',
-    r'\bcu[aá]l es el snack m[aá]s vendido\b', r'\bcu[aá]l es el snack m[aá]s popular\b'
+    r'\bcu[aá]l es el snack m[aá]s vendido\b', r'\bcu[aá]l es el snack m[aá]s popular\b',
+    r'\bcu[aá]l es el snack m[aá]s pedido\b', r'\bcu[aá]l es el snack m[aá]s solicitado\b',
+    r'[Qq]u[eé] snack es el m[aá]s vendido\b', r'[Qq]u[eé] snack es el m[aá]s popular\b'
 ]
 
+# Expresiones regulares para detectar categorías como "desayunos", "bebidas", etc.
+PRODUCT_BY_NAME_CATEGORY_PATTERNS = [
+    r'\b(?:qu[eé]|me\s+gustar[ií]a)\s+(?:ver|tener|una|la|un)\s+(desayunos?|bebidas?|entradas?|platos?|snacks?|almuerzos?|segundos?|postres?)\b',
+    r'\b(?:mu[ée]strame|ens[ée][ñn]ame|ver|quiero\s+ver)\s+(?:el\s+)?(?:men[úu]|lista)\s+(?:de\s+)?(\w+)\b',
+    r'\b(?:productos|art[ií]culos|opciones|cosas)\s+(?:de\s+la\s+categor[ií]a\s+)?(\w+)\b',
+    r'\b(?:categor[ií]a\s+de\s+)?(\w+)\s+(?:productos|art[ií]culos|opciones|men[úu])\b',
+    r'\b(?:tienes|hay)\s+(\w+)\s+(?:en\s+(?:el\s+men[úu]|la\s+categor[ií]a))\b',
+    r'\b(?:quiero\s+la\s+lista\s+de\s+(\w+))\b',
+    r'\b(?:cu[áa]les\s+son\s+los\s+productos\s+de\s+la\s+categor[ií]a\s+(\w+))\b',
+]
+
+# Bloquea si en la búsqueda de productos aparece una palabra que puede ser una categoría
 PRODUCT_BY_NAME_PATTERN = [
-    r'\btienes (\w+)\b',
-    r'\bquiero un (\w+)\b',
-    r'\bquiero una (\w+)\b',
-    r'\bquisiera un (\w+)\b',
-    r'\bquisiera una (\w+)\b',
-    r'\bnecesito un (\w+)\b',
-    r'\bnecesito una (\w+)\b'
-    r'\bme gustar[ií]a un (\w+)\b',
-    r'\bme gustar[ií]a una (\w+)\b',
-    r'\bme gustar[ií]a pedir un (\w+)\b',
-    r'\bme gustar[ií]a pedir una (\w+)\b',
-    r'\bme gustar[ií]a ordenar un (\w+)\b',
-    r'\bme gustar[ií]a ordenar una (\w+)\b',
-    r'\bme gustar[ií]a pedir (\w+)\b',
-    r'\bme gustar[ií]a ordenar (\w+)\b',
+    r'\b(?:tienes|quiero|quisiera|necesito|me\s+gustar[ií]a(?:\s+pedir|ordenar)?|deseo)\s+(?:una|un|la|el)\s+(?!desayuno|almuerzo|segundo|entrada|snack|postre\b)([\w\s]+)\b',
+    r'\b(?:me\s+gustar[ií]a)\s+(?:pedir|ordenar)\s+(?:una|un)\s+(?!desayuno|almuerzo|segundo|entrada|snack|postre\b)([\w\s]+)\b',
+    r'\b(?:quiero\s+la\s+opción\s+(?!desayuno|almuerzo|bebida|segundo|entrada|snack|postre\b)([\w\s]+))\b',
 ]
 
 # Patrones de expresión regular para extraer la cantidad y el nombre del producto
 PRODUCT_ORDER_PATTERN = [
-    r'\bquiero\s+(-?\d+)\s+(.+)',  # Permite números negativos y positivos
-    r'\bquisiera\s+(-?\d+)\s+(.+)',
-    r'\bnecesito\s+(-?\d+)\s+(.+)',
-    r'\bme gustar[ií]a\s+(-?\d+)\s+(.+)',
-    r'\bme gustar[ií]a pedir\s+(-?\d+)\s+(.+)',
-    r'\bme gustar[ií]a ordenar\s+(-?\d+)\s+(.+)',
+    r'\bquiero\s+(-?\d+)\s+(\w+)',  # Captura solo una palabra después del número
+    r'\bquisiera\s+(-?\d+)\s+(\w+)',
+    r'\bnecesito\s+(-?\d+)\s+(\w+)'
 ]
 
 # Patrones de expresión regular para consultar la cantidad de un producto
@@ -135,7 +150,7 @@ RECOMMEND_PRODUCT_PATTERNS = {
         r'\bqu[eé] segundo es bueno\b', r'\bqu[eé] segundo econ[oó]mico me recomiendas\b',
         r'\bqu[eé] segundo es bueno y econ[oó]mico\b', r'\bqu[eé] plato fuerte recomiendas\b',
         r'\bqu[eé] plato fuerte me recomiendas\b', r'\bqu[eé] plato fuerte es bueno\b',
-        r'\bqu[eé] plato fuerte econ[oó]mico me recomiendas\b', r'\bqu[eé] plato fuerte es bueno y econ[oó]mico\b'
+        r'[Qq]u[eé] plato fuerte es el m[aá]s comprado\b', r'\bqu[eé] plato fuerte es el mas vendido\b'
     ],
     "snack": [
         r'\bsnack recomendado\b', r'\bqu[eé] snack recomiendas\b', r'\bqu[eé] snack me recomiendas\b',
@@ -145,26 +160,29 @@ RECOMMEND_PRODUCT_PATTERNS = {
     "main": [
         r'\balmuerzo recomendado\b', r'\bqu[eé] almuerzo recomiendas\b', r'\bqu[eé] almuerzo me recomiendas\b',
         r'\bqu[eé] almuerzo es bueno\b', r'\bqu[eé] almuerzo econ[oó]mico me recomiendas\b',
-        r'\bqu[eé] almuerzo es bueno y econ[oó]mico\b'
+        r'\bqu[eé] almuerzo es bueno y econ[oó]mico\b',
+        r'\bdeseo un almuerzo\b', r'\bqu[eé] almuerzo me recomiendas\b',
+        r'\bdame un almuerzo\b'
 
     ]
 }
+
+# Definir patrones para saludos y conversaciones comunes
+GREETING_PATTERNS = [
+    r'\bhola\b', r'\bhi\b', r'\bhello\b', r'\bbuenos días\b', r'\bbuenas tardes\b', r'\bbuenas noches\b',
+    r'\bcómo estás\b', r'\bqué tal\b', r'\bqué pasa\b'
+]
+
+
+# Función para manejar respuestas comunes
+async def handle_common_responses(update: Update, patterns, response_text):
+    if match_pattern(patterns, update.message.text.lower()):
+        await update.message.reply_text(response_text)
+        return True
+    return False
+
+
 EXIT_PATTERNS = [r'\bsalir\b', r'\bsalir del chat\b', r'\bterminar\b']
-
-
-# Función para vaciar el chat y cerrar la sesión
-async def exit_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    from app.telegram_bot import greeting_messages  # Importación retrasada
-    chat_id = update.message.chat_id
-    if chat_id in greeting_messages:
-        greeting_message_id = greeting_messages[chat_id]["greeting_message_id"]
-        await context.bot.delete_message(chat_id=chat_id, message_id=greeting_message_id)
-        del greeting_messages[chat_id]
-
-    await update.message.reply_text(
-        "Gracias por preferirnos. ¡Hasta pronto 👋! Recuerda que para volver a ingresar "
-        "puedes presionar el botón de abajo para ejecutar el comando /start.👈",
-    )
 
 
 # Función para verificar si un mensaje coincide con algún patrón
@@ -186,9 +204,29 @@ async def handle_response(update, patterns, handler_function):
     return False
 
 
-# Función para manejar la respuesta basada en el patrón detectado
+# Mapeo de palabras clave a nombres de productos específicos
+name_keywords = {
+    'agua mineral': 'Agua mineral',
+    'agua con gas': 'Agua con gas',
+    'bolon': 'Bolón',
+    'bolon con cafe': 'Bolón',
+    'bolón con café': 'Bolón',
+}
+
+
+# Función para manejar la respuesta basada en el patrón detectado por nombre
 async def handle_response_by_name(update, patterns, handler_function):
     message = update.message.text.lower()
+
+    # Verificar si el mensaje contiene una palabra clave que corresponda a un producto
+    for keyword, product_name in name_keywords.items():
+        if keyword in message:
+            logger.info(f"Detected keyword: {keyword}, mapping to product name: {product_name}")
+            fake_query = type('FakeQuery', (object,), {'edit_message_text': update.message.reply_text})
+            await handler_function(fake_query, product_name)
+            return True
+
+    # Proceder con la lógica habitual si no se encuentra una palabra clave específica
     for pattern in patterns:
         match = re.search(pattern, message)
         if match:
@@ -198,7 +236,7 @@ async def handle_response_by_name(update, patterns, handler_function):
             await handler_function(fake_query, product_name)
             return True
         else:
-            logger.info("Tu mensaje esta siendo revisado...")
+            logger.info("No se encontraron mensajes de nombres de productos, saltando...")
     return False
 
 
@@ -227,7 +265,7 @@ async def handle_response_by_quantity(update: Update, patterns, handler_function
                 await update.message.reply_text("Por favor, proporciona una cantidad válida.")
                 return True
         else:
-            logger.info("Tu mensaje está siendo revisado...")
+            logger.info("No se encontraron mensajes de cantidad y nombre, saltando...")
     return False
 
 
@@ -247,7 +285,7 @@ async def handle_response_by_quantityofproduct(update: Update, patterns, handler
                 logger.error("No such group in pattern matching")
                 continue
         else:
-            logger.info("Tu mensaje está siendo revisado...")
+            logger.info("No se encontraron mensajes de cantidad, saltando...")
     return False
 
 
@@ -267,22 +305,84 @@ async def handle_response_by_price(update: Update, patterns, handler_function):
                 logger.error("No such group in pattern matching")
                 continue
         else:
-            logger.info("Tu mensaje está siendo revisado...")
+            logger.info("No se encontraron mensajes de precios, saltando...")
+    return False
+
+
+# Función para manejar la respuesta basada en el patrón detectado por categoría
+async def handle_response_by_category(update: Update, patterns, handler_function):
+    message = update.message.text.lower()
+
+    # Mapeo de palabras clave a categorías específicas
+    category_keywords = {
+        'desayuno': 'Desayunos',
+        'bebida': 'Bebidas',
+        'bebida deportiva': 'Bebidas deportivas',
+        'almuerzo': 'Almuerzos',  # Este es el que mapea a las categorías combinadas
+        'segundo': 'Segundos',
+        'entrada': 'Entradas',
+        'snack': 'Snacks',
+    }
+
+    for keyword, category in category_keywords.items():
+        if keyword in message:
+            logger.info(f"Detected keyword: {keyword}, mapping to category: {category}")
+            if category == 'Almuerzos':
+                await show_lunch_products(update)  # Mostrar productos de almuerzo
+            else:
+                fake_query = type('FakeQuery', (object,), {'edit_message_text': update.message.reply_text})
+                await handler_function(fake_query, category)
+            return True
+
+    # Proceder con la lógica habitual si no se encuentra una palabra clave específica
+    for pattern in patterns:
+        match = re.search(pattern, message)
+        if match:
+            try:
+                category_name = match.group(1).strip().title()
+                logger.info(f"Category name extracted: {category_name}")
+                fake_query = type('FakeQuery', (object,), {'edit_message_text': update.message.reply_text})
+                await handler_function(fake_query, category_name)
+                return True
+            except IndexError:
+                logger.error("No such group in pattern matching")
+                continue
+        else:
+            logger.info("No se encontraron nombres de categorías en este mensaje, saltando...")
     return False
 
 
 # Manejador de mensajes de texto
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Maneja los mensajes de texto entrantes de los usuarios."""
+    if context.chat_data.get("session_closed", False):  # La sesión está cerrada por defecto si no se ha establecido
+        await update.message.reply_text("La sesión ha terminado. Para empezar de nuevo, escribe /start.")
+        return
+
     user_message = update.message.text.lower()  # Convertir a minúsculas para coincidencia de patrones
     logger.info(f"Received message from user: {user_message}")
+
+    # Guardar el mensaje del usuario en el historial con su message_id
+    chat_id = update.message.chat_id
+    if "conversation_history" not in context.chat_data:
+        context.chat_data["conversation_history"] = []
+
+    context.chat_data["conversation_history"].append({
+        "role": "user",
+        "content": user_message,
+        "message_id": update.message.message_id  # Guardar el ID del mensaje del usuario
+    })
+
+    # Verificar si el mensaje coincide con saludos o preguntas comunes
+    if await handle_common_responses(update, GREETING_PATTERNS, "¡Hola! ¿Cómo puedo ayudarte hoy?"):
+        return
 
     # Verificar si el mensaje coincide con los patrones de salida
     if match_pattern(EXIT_PATTERNS, user_message):
         await exit_chat(update, context)
         return
 
-    # Diccionario para mapear patrones a funciones de manejo
+    # 1. Verificar si corresponde a una acción específica
     pattern_handlers = [
         (MENU_PATTERNS, show_categories),
         (MOST_ORDERED_PRODUCT_PATTERNS, show_most_ordered_product),
@@ -301,75 +401,92 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         (RECOMMEND_PRODUCT_PATTERNS["main"], show_most_sold_main)
     ]
 
-    # Verificar y manejar cada patrón
     for patterns, handler_function in pattern_handlers:
         if await handle_response(update, patterns, handler_function):
             return
 
-    # Diccionario para mapear patrones a funciones de manejo por nombre
-    pattern_handlersbyname = [
-        (PRODUCT_BY_NAME_PATTERN, show_product_by_name),
-    ]
-    # Verificar y manejar unicamente el patrón de productos por nombre
-    for patterns, handler_function in pattern_handlersbyname:
-        if await handle_response_by_name(update, patterns, handler_function):
-            return
+    # 2. Verificar si el mensaje corresponde a una categoría
+    if await handle_response_by_category(update, PRODUCT_BY_NAME_CATEGORY_PATTERNS, show_products_by_category_name):
+        return
 
-    # Diccionario para mapear patrones a funciones de manejo por cantidad
-    pattern_handlersbyquantity = [
-        (PRODUCT_ORDER_PATTERN, show_product_stock_by_name)
-    ]
-    # Verificar y manejar unicamente el patrón de productos por cantidad
-    for patterns, handler_function in pattern_handlersbyquantity:
-        if await handle_response_by_quantity(update, patterns, handler_function):
-            return
+    # 3. Si no es una categoría, verificar si es un producto específico
+    if await handle_response_by_name(update, PRODUCT_BY_NAME_PATTERN, show_product_by_name):
+        return
 
-    # Diccionario para mapear patrones a funciones de manejo por cantidad
-    pattern_handlersbyquantityofproduct = [
-        (PRODUCT_QUANTITY_PATTERN, show_product_stock_by_productname)
-    ]
+    # 4. Manejar cantidades de productos
+    if await handle_response_by_quantity(update, PRODUCT_ORDER_PATTERN, show_product_stock_by_name):
+        return
 
-    # Verificar y manejar unicamente el patrón de productos por cantidad
-    for patterns, handler_function in pattern_handlersbyquantityofproduct:
-        if await handle_response_by_quantityofproduct(update, patterns, handler_function):
-            return
+    # 5. Manejar cantidad por producto
+    if await handle_response_by_quantityofproduct(update, PRODUCT_QUANTITY_PATTERN, show_product_stock_by_productname):
+        return
 
-    # Diccionario para mapear patrones a funciones de manejo por precio
-    pattern_handlersbyprice = [
-        (PRODUCT_PRICE_PATTERN, show_product_price_by_name)
-    ]
+    # 6. Manejar precios de productos
+    if await handle_response_by_price(update, PRODUCT_PRICE_PATTERN, show_product_price_by_name):
+        return
 
-    # Verificar y manejar unicamente el patrón de productos por precio
-    for patterns, handler_function in pattern_handlersbyprice:
-        if await handle_response_by_name(update, patterns, handler_function):
-            return
+    # 7. Si no coincide con nada relacionado a productos o categorías, usar GPT para manejo de conversación general
+    if user_message not in context.chat_data["conversation_history"]:
+        messages = [system_context] + context.chat_data["conversation_history"]
 
-    # Obtener el historial de la conversación
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=messages,
+                max_tokens=150,
+                temperature=0.7,  # Un poco de creatividad para respuestas más naturales
+            )
+
+            gpt_response = response.choices[0].message['content'].strip()
+
+            # Revisar si la respuesta incluye recomendaciones de productos
+            # Evitar usar recomendaciones de GPT si son de productos específicos
+            if any(keyword in gpt_response.lower() for keyword in ["recomiendo", "te sugiero", "prueba"]):
+                await update.message.reply_text("Lo siento, no puedo ofrecerte esa recomendación, intenta pedirme "
+                                                "otra cosa.")
+            else:
+                sent_message = await update.message.reply_text(
+                    gpt_response)  # Enviar la respuesta y guardar el message_id
+
+                context.chat_data["conversation_history"].append({
+                    "role": "assistant",
+                    "content": gpt_response,
+                    "message_id": sent_message.message_id  # Guardar el ID del mensaje enviado
+                })
+
+        except Exception as e:
+            logger.error(f"Error generating response: {e}")
+            await update.message.reply_text("Lo siento, algo salió mal al procesar tu solicitud.")
+
+
+# Función para vaciar el chat y cerrar la sesión
+async def exit_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    from app.telegram_bot import greeting_messages  # Importación retrasada
     chat_id = update.message.chat_id
-    if "conversation_history" not in context.chat_data:
-        context.chat_data["conversation_history"] = []
 
-    # Añadir el mensaje del usuario al historial
-    context.chat_data["conversation_history"].append({"role": "user", "content": user_message})
+    # Marcar la sesión como cerrada
+    context.chat_data["session_closed"] = True
 
-    # Construir el historial de mensajes para el modelo
-    messages = [system_context] + context.chat_data["conversation_history"]
+    # Borrar mensajes previos de saludo
+    if chat_id in greeting_messages:
+        greeting_message_id = greeting_messages[chat_id]["greeting_message_id"]
+        await context.bot.delete_message(chat_id=chat_id, message_id=greeting_message_id)
+        del greeting_messages[chat_id]
 
-    try:
-        # Enviar el historial de mensajes al modelo GPT-3.5-turbo para obtener una respuesta
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages
-        )
+    # Eliminar todos los mensajes en el historial del chat
+    if "conversation_history" in context.chat_data:
+        for message in context.chat_data["conversation_history"]:
+            message_id = message.get("message_id")
+            if message_id is not None:
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+                except BadRequest as e:
+                    logger.warning(f"Could not delete message {message_id}: {e}")
+            else:
+                logger.warning(f"Message identifier is not specified for message: {message}")
+        del context.chat_data["conversation_history"]
 
-        # Extraer el contenido de la respuesta de GPT-3.5-turbo
-        gpt_response = response.choices[0].message['content'].strip()
-
-        # Añadir la respuesta del asistente al historial
-        context.chat_data["conversation_history"].append({"role": "assistant", "content": gpt_response})
-
-        # Enviar la respuesta de vuelta al usuario
-        await update.message.reply_text(gpt_response)
-    except Exception as e:
-        logger.error(f"Error generating response: {e}")
-        await update.message.reply_text("Lo siento, algo salió mal al procesar tu solicitud.")
+    await update.message.reply_text(
+        "Gracias por preferirnos. ¡Hasta pronto 👋! Recuerda que para volver a ingresar "
+        "puedes presionar el botón de este enlace para ejecutar el comando /start.👈",
+    )

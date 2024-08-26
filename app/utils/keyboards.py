@@ -79,6 +79,138 @@ async def show_products(query, category_id):
     await query.edit_message_text(text="Selecciona un producto:", reply_markup=reply_markup)
 
 
+# Obtener productos por nombre de categoría
+async def get_products_by_category_name(category_name: str):
+    async with SessionLocal() as session:
+        async with session.begin():
+            # Consulta para obtener el ID de la categoría
+            result = await session.execute(select(Category.id).where(Category.name == category_name))
+            category_id = result.scalar_one_or_none()
+
+            # Consulta para obtener los productos de la categoría
+            products = (await session.execute(select(Product).where(Product.categoryId == category_id))).scalars().all()
+    return products
+
+
+# Consulta para obtener los productos de una categoría por nombre
+async def show_products_by_category_name(query: Update.callback_query, category_name: str) -> None:
+    """Muestra los productos de una categoría específica basada en su nombre."""
+    logger.info(f"Buscando productos de la categoría con nombre: {category_name}")
+    try:
+        products = await get_products_by_category_name(category_name)
+
+        if products:
+            response = f"Tenemos {len(products)} '{category_name}' para ofrecerte:"
+            keyboard = []
+
+            for product in products:
+                product_info = f"{product.name} - ${product.price}"
+                if product.stock is not None:
+                    product_info += f" - Cantidad: {product.stock}"
+
+                # Añadir cada producto como un botón
+                keyboard.append([InlineKeyboardButton(product_info, callback_data=f"product_{product.id}")])
+
+            # Añadir botón de regresar a categorías
+            keyboard.append([InlineKeyboardButton("Regresar a Categorías ↩", callback_data="return_categories")])
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(text=response, reply_markup=reply_markup)
+        else:
+            response = "No hay productos disponibles en esta categoría."
+            keyboard = [[InlineKeyboardButton("Regresar a Categorías ↩", callback_data="return_categories")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(text=response, reply_markup=reply_markup)
+    except Exception as e:
+        logger.error(f"Error al buscar los productos por nombre de categoría: {e}")
+        print("Ocurrió un error al buscar los productos de la categoría.")
+
+
+# Consulta para obtener dos listas de categorías juntas la de entradas y segundos para obtener la categoría de almuerzos
+async def get_lunch_categories():
+    async with SessionLocal() as session:
+        async with session.begin():
+            # Consulta para obtener las categorías de entradas y segundos
+            entradas_category = (
+                await session.execute(select(Category).where(Category.name == "Entradas"))).scalar_one()
+            segundos_category = (
+                await session.execute(select(Category).where(Category.name == "Segundos"))).scalar_one()
+    return entradas_category, segundos_category
+
+
+# Mostrar productos de la categoría de almuerzos
+async def show_lunch_products(query_or_update) -> None:
+    """Muestra los productos de la categoría de almuerzos."""
+    global edit_message, query
+    logger.info("Buscando productos de la categoría de almuerzos")
+    try:
+        # Determinar si la llamada viene de un callback_query o de un mensaje de texto
+        if isinstance(query_or_update, Update) and query_or_update.callback_query:
+            query = query_or_update.callback_query
+            edit_message = True
+        elif isinstance(query_or_update, Update) and query_or_update.message:
+            query = query_or_update.message
+            edit_message = False
+        else:
+            raise ValueError("El objeto proporcionado no es ni un 'CallbackQuery' ni un 'Message'.")
+
+        entradas_category, segundos_category = await get_lunch_categories()
+
+        # Consulta para obtener los productos de la categoría de entradas
+        entradas_products = await get_products_by_category_name(entradas_category.name)
+
+        # Consulta para obtener los productos de la categoría de segundos
+        segundos_products = await get_products_by_category_name(segundos_category.name)
+
+        if entradas_products or segundos_products:
+            keyboard = []
+
+            # Mostrar productos de la categoría de Entradas (Sopas)
+            if entradas_products:
+                # Añadir separador de Sopas
+                keyboard.append([InlineKeyboardButton("Sopas 🥘", callback_data="separator_sopas")])
+                for product in entradas_products:
+                    product_info = f"{product.name} - ${product.price}"
+                    if product.stock is not None:
+                        product_info += f" - Cantidad: {product.stock}"
+                    keyboard.append([InlineKeyboardButton(product_info, callback_data=f"product_{product.id}")])
+
+            # Mostrar productos de la categoría de Segundos
+            if segundos_products:
+                # Añadir separador de Segundos
+                keyboard.append([InlineKeyboardButton("Segundos 🍛", callback_data="separator_segundos")])
+                for product in segundos_products:
+                    product_info = f"{product.name} - ${product.price}"
+                    if product.stock is not None:
+                        product_info += f" - Cantidad: {product.stock}"
+                    keyboard.append([InlineKeyboardButton(product_info, callback_data=f"product_{product.id}")])
+
+            # Añadir botón de regresar a categorías
+            keyboard.append([InlineKeyboardButton("Regresar a Categorías ↩", callback_data="return_categories")])
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            # Enviar respuesta dependiendo del tipo de query
+            if edit_message:
+                await query.edit_message_text(text="De Almuerzos tenemos lo siguiente:", reply_markup=reply_markup)
+            else:
+                await query.reply_text(text="De Almuerzos tenemos lo siguiente:", reply_markup=reply_markup)
+        else:
+            response = "No hay productos disponibles en la categoría de almuerzos."
+            keyboard = [[InlineKeyboardButton("Regresar a Categorías ↩", callback_data="return_categories")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            if edit_message:
+                await query.edit_message_text(text=response, reply_markup=reply_markup)
+            else:
+                await query.reply_text(text=response, reply_markup=reply_markup)
+    except Exception as e:
+        logger.error(f"Error al buscar los productos de la categoría de almuerzos: {e}")
+        if edit_message:
+            await query.edit_message_text(text="Ocurrió un error al buscar los productos de la categoría de almuerzos.")
+        else:
+            await query.reply_text(text="Ocurrió un error al buscar los productos de la categoría de almuerzos.")
+
+
 # Consulta para obtener el producto más pedido u ordenado
 async def show_most_ordered_product(query: Update.callback_query) -> None:
     """Fetches and shows the most ordered product."""
@@ -97,7 +229,7 @@ async def show_most_ordered_product(query: Update.callback_query) -> None:
 
     if most_ordered_product:
         price = f"{most_ordered_product.price:.2f}"  # Format price to 2 decimal places
-        response = f"El producto más pedido es {most_ordered_product.name} a un precio de ${price}."
+        response = f"El producto más pedido o popular de este negocio es {most_ordered_product.name} a un precio de ${price}."
     else:
         response = "No se encontró información sobre el producto más pedido."
 
@@ -336,7 +468,7 @@ async def recommend_second_by_price(query: Update.callback_query) -> None:
 
     if cheapest_second:
         price = f"{cheapest_second.price:.2f}"  # Formato del precio a dos decimales
-        response = f"Te recomendamos el segundo más económico, es {cheapest_second.name} a un precio de ${price}."
+        response = f"Entre los mas comprados y como recomendación tenemos,  {cheapest_second.name} a un precio de ${price}."
     else:
         response = "No se encontró información sobre el segundo más económico."
 
@@ -432,7 +564,7 @@ async def show_product_by_name(query: Update.callback_query, product_name: str) 
                     response = f"Claro, tenemos {product.name}\n A un precio de ${price}\n Disponemos de: {stock} unidades\n Recuerda todos los pedidos se hacen a travez de la mini App 👀\n"
                 else:
                     response = (f"Claro, tenemos {product.name}\n A un precio de ${price}, pero recuerda estos no "
-                                f"cuentan con stock.\n Recuerda todos los pedidos se hacen a travez de la mini App 👀\n")
+                                f"cuentan con un stock.\n Recuerda todos los pedidos se hacen a travez de la mini App 👀\n")
 
         else:
             response = "No disponemos productos con ese nombre."
@@ -467,13 +599,14 @@ async def show_product_stock_by_name(query: Update.callback_query, product_name:
                 response = f"Encontramos {len(products)} productos que coinciden con '{product_name}':\n"
                 for product in products:
                     if product.stock is None:
-                        response += (f"- {product.name}: No tiene un stock asignado porque la categoría del producto "
-                                     f"no está considerada para tener stock. Revise el menú para más información.\n")
+                        response += (
+                            f"- {product.name}: No tiene una cantidad asignada porque la categoría del producto "
+                            f"no está considerada para tener stock. Revise el menú para más información.\n")
                     else:
                         stock = product.stock
                         remaining_stock = stock - requested_quantity
                         if remaining_stock < 0:
-                            response += (f"- {product.name}: Solo quedan {stock} unidades. No hay suficiente stock "
+                            response += (f"- {product.name}: Solo quedan {stock} unidades. No hay suficientes unidades "
                                          f"para tu"
                                          f"pedido.\n")
                         else:
@@ -481,16 +614,16 @@ async def show_product_stock_by_name(query: Update.callback_query, product_name:
             else:
                 product = products[0]
                 if product.stock is None:
-                    response = (f"El producto '{product.name}' no tiene un stock asignado porque la categoría del "
+                    response = (f"El producto '{product.name}' no tiene una cantidad asignada porque la categoría del "
                                 f"producto"
-                                f"no está considerada para tener stock. Revise el menú para más información.")
+                                f"no está considerada para tener  un stock. Revise el menú para más información.")
                 else:
                     stock = product.stock
                     remaining_stock = stock - requested_quantity
                     if remaining_stock < 0:
-                        response = f"No hay suficiente stock para el producto '{product.name}'. Solo quedan {stock} unidades."
+                        response = f"No hay suficientes unidades para el producto '{product.name}'. Solo quedan {stock} unidades."
                     else:
-                        response = f"El stock del producto {product.name} es de {stock} unidades. Con tu compra quedarían {remaining_stock} unidades."
+                        response = f"La cantidad del producto {product.name} es de {stock} unidades. Con tu compra quedarían {remaining_stock} unidades."
         else:
             response = "No disponemos de productos con ese nombre."
 
@@ -514,12 +647,13 @@ async def show_product_stock_by_productname(query: Update.callback_query, produc
             if len(products) > 1:
                 response = f"Encontramos {len(products)} productos que coinciden con '{product_name}':\n"
                 for product in products:
-                    stock_info = f"{product.stock} unidades disponibles." if product.stock is not None else "No tiene un stock asignado."
+                    stock_info = f"{product.stock} unidades disponibles." if product.stock is not None else ("Estos "
+                                                                                                             "productos son para prepara no tienen cantidad específica.")
                     response += f"- {product.name}: {stock_info}\n"
             else:
                 product = products[0]
                 if product.stock is None:
-                    response = f"El producto '{product.name}' no tiene un stock asignado."
+                    response = f"El producto '{product.name}' no tiene una cantidad asignada."
                 else:
                     if product_quantity:
                         if product_quantity <= product.stock:
@@ -527,7 +661,7 @@ async def show_product_stock_by_productname(query: Update.callback_query, produc
                         else:
                             response = f"Lo siento, solo tenemos {product.stock} {product.name}(s) disponibles."
                     else:
-                        response = f"El stock del producto {product.name} es de {product.stock} unidades."
+                        response = f"La cantidad del producto {product.name} es de {product.stock} unidades."
         else:
             response = "No disponemos de productos con ese nombre."
 

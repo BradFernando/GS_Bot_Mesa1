@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Numeric, ForeignKey
+from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, Text, TIMESTAMP, func
 from sqlalchemy.orm import relationship, declarative_base
 
 Base = declarative_base()
@@ -36,3 +36,14 @@ class OrderProducts(Base):
     quantity = Column(Integer)
     order = relationship("Order", back_populates="order_products")
     product = relationship("Product", back_populates="orders")
+
+
+# Nueva tabla Recommendation
+
+class Recommendation(Base):
+    __tablename__ = 'Recommendation'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    userName = Column(String, nullable=False)
+    rating = Column(Integer, nullable=False)
+    comment = Column(Text, nullable=False)
+    createdAt = Column(TIMESTAMP(timezone=True), server_default=func.current_timestamp(), nullable=False)

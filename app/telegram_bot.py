@@ -29,6 +29,9 @@ def get_greeting() -> str:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.info("Handling /start command")
 
+    # Abrir la sesión cuando se ejecuta /start
+    context.chat_data["session_closed"] = False
+
     if isinstance(update, Update) and update.message:
         user_first_name = update.message.from_user.first_name
         chat_id = update.message.chat_id
@@ -45,7 +48,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     greeting_message = responses["greeting_message"].format(
         greeting=greeting,
         user_first_name=user_first_name,
-        chat_id=f"`{chat_id}`",
+        chat_id=f"{chat_id}",
         bot_name=bot_name
     )
 
@@ -80,6 +83,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     chat_id = query.message.chat_id
 
+    if context.chat_data.get("session_closed"):
+        # Ignorar cualquier acción si la sesión está cerrada
+        await query.message.reply_text("La sesión ha terminado. Para empezar de nuevo, escribe /start.")
+        return
+
     if query.data == "menu":
         await show_categories(query)
     elif query.data.startswith("category_"):
@@ -94,11 +102,14 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         reply_markup = get_otros_keyboard()
         await query.edit_message_text(text=responses["other_questions_message"], reply_markup=reply_markup)
     elif query.data == "salir":
+        # Marcar la sesión como cerrada
+        context.chat_data["session_closed"] = True
         if chat_id in greeting_messages:
             greeting_message_id = greeting_messages[chat_id]["greeting_message_id"]
             await context.bot.delete_message(chat_id=chat_id, message_id=greeting_message_id)
             del greeting_messages[chat_id]
-        await query.edit_message_text(text="Gracias por usar el bot. ¡Hasta luego!")
+        await query.message.delete()  # Delete the message containing the keyboard
+        await query.message.reply_text(text="Gracias por usar el bot. ¡Hasta luego!")
     elif query.data == "tiempo_pedido":
         response = responses["tiempo_pedido_response"]
         keyboard = [[InlineKeyboardButton("Regresar a las Preguntas ↩", callback_data="return_otros")]]
