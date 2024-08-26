@@ -53,7 +53,7 @@ async def handle_comment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
     elif context.user_data.get('awaiting_comment'):
         comment = user_message
-        username = update.message.from_user.username
+        username = update.message.from_user.username or "Anonimo"  # Usar "Anonimo" si no hay username
 
         async with SessionLocal() as session:
             try:

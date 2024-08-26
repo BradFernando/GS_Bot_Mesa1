@@ -699,3 +699,4 @@ async def show_product_price_by_name(query: Update.callback_query, product_name:
     except Exception as e:
         logger.error(f"Error al buscar el precio del producto por nombre: {e}")
         await query.edit_message_text(text="Ocurrió un error al buscar el precio del producto.")
+

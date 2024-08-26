@@ -2,10 +2,13 @@ import os
 import re
 
 import openai
+from sqlalchemy import select
 from telegram import Update
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
+from app.database import SessionLocal
+from app.models import Product
 from app.utils.keyboards import (show_categories, show_most_ordered_product, show_most_sold_drink,
                                  show_most_sold_sport_drink, show_most_sold_breakfast, show_most_sold_starter,
                                  show_most_sold_second, show_most_sold_snack, recommend_drink_by_price,
@@ -29,7 +32,7 @@ system_context = {
     "content": " ".join(rules)  # Une las cadenas en rules en una sola cadena
 }
 
-LOWERCASE_WORDS = {"de", "con", "y", "en", "a", "el", "la", "los", "las", "un", "una", "unos", "unas"}
+LOWERCASE_WORDS = {"de", "con", "y", "en", "a", "al", "el", "la", "los", "las", "un", "una", "unos", "unas"}
 
 # Definir constantes para patrones de expresiones regulares
 MENU_PATTERNS = [
@@ -103,6 +106,7 @@ PRODUCT_BY_NAME_PATTERN = [
     r'\b(?:hay)\s+(?!desayuno|almuerzo|segundo|entrada|snack|postre\b)([\w\s]+)\b',
     r'\b(?:me\s+gustar[ií]a)\s+(?:pedir|ordenar)\s+(?:una|un)\s+(?!desayuno|almuerzo|segundo|entrada|snack|postre\b)([\w\s]+)\b',
     r'\b(?:quiero\s+la\s+opción\s+(?!desayuno|almuerzo|bebida|segundo|entrada|snack|postre\b)([\w\s]+))\b',
+    r'\b(?:quiero)\s+(?:una|un)\s+(?!desayuno|almuerzo|segundo|entrada|snack|postre\b)([\w\s]+)\b',
 ]
 
 # Patrones de expresión regular para extraer la cantidad y el nombre del producto
@@ -163,6 +167,8 @@ RECOMMEND_PRODUCT_PATTERNS = {
     ],
     "main": [
         r'\balmuerzo recomendado\b', r'\bqu[eé] almuerzo recomiendas\b', r'\bqu[eé] almuerzo me recomiendas\b',
+        r'\bcu[aá]l es el plato m[aá]s popular\b', r'\bcu[aá]l es el plato m[aá]s vendido\b',
+        r'\bcu[aá]l es el plato m[aá]s pedido\b',
         r'\bqu[eé] almuerzo es bueno\b', r'\bqu[eé] almuerzo econ[oó]mico me recomiendas\b',
         r'\bqu[eé] almuerzo es bueno y econ[oó]mico\b',
         r'\bdeseo un almuerzo\b', r'\bqu[eé] almuerzo me recomiendas\b',
@@ -214,57 +220,49 @@ async def handle_response(update, patterns, handler_function):
     return False
 
 
-# Mapeo de palabras clave a nombres de productos específicos
-name_keywords = {
-    'agua mineral': 'Agua mineral',
-    'agua con gas': 'Agua con gas',
-    'bolon': 'Bolón',
-    'bolon con cafe': 'Bolón',
-    'bolón con café': 'Bolón',
-    'bolón de verde': 'Bolón',
-    'bolón de verde con chicharrón': 'Bolón de verde con chicharrón + Café',
-    'bolón de verde con chicharron': 'Bolón de verde con chicharrón + Café',
-    'bolón de verde mixto': 'Bolón de verde mixto + Café',
-    'bistec de hígado': 'Bistec de hígado + Café',
-    'bistec de higado': 'Bistec de hígado + Café',
-}
-
-
 # Función para manejar la respuesta basada en el patrón detectado por nombre
 async def handle_response_by_name(update, patterns, handler_function):
     message = update.message.text.lower()
 
-    # Dividir el mensaje por posibles productos separados por "y"
-    possible_products = [prod.strip() for prod in message.split("y")]
+    # Extracción directa del nombre del producto evitando categorías comunes
+    match = re.search(
+        r'\b(?:tienes|quiero|quisiera|necesito|me\s+gustar[ií]a(?:\s+pedir|ordenar)?|deseo)\s+(?:una|un|la|el)\s+(?!desayuno|almuerzo|segundo|entrada|snack|postre\b)([\w\s]+)\b',
+        message
+    )
 
-    found_products = []
-    for product in possible_products:
-        for keyword, product_name in name_keywords.items():
-            if keyword in product:
-                found_products.append(product_name)
-                break
+    if match:
+        product_name = match.group(1).strip().title()  # Mantén el nombre tal cual
 
-    # Si encontramos productos, llamamos al handler_function para cada uno
-    if found_products:
-        for product_name in found_products:
-            logger.info(f"Detected keyword, mapping to product name: {product_name}")
-            fake_query = type('FakeQuery', (object,), {'edit_message_text': update.message.reply_text})
-            await handler_function(fake_query, product_name)
-        return True
+        async with SessionLocal() as session:
+            async with session.begin():
+                # Permitir coincidencia parcial en cualquier parte del nombre
+                query = select(Product.name).where(Product.name.ilike(f'%{product_name}%')).limit(1)
+                result = await session.execute(query)
+                product_name = result.scalar_one_or_none()
 
-    # Si no se encontró nada, seguir con la lógica habitual
-    for pattern in patterns:
-        match = re.search(pattern, message)
-        if match:
-            product_name = title_case_except_exceptions(match.group(1).strip())
-            logger.info(f"Product name extracted: {product_name}")
+        if product_name:
+            logger.info(f"Producto encontrado en la base de datos: {product_name}")
             fake_query = type('FakeQuery', (object,), {'edit_message_text': update.message.reply_text})
             await handler_function(fake_query, product_name)
             return True
-        else:
-            logger.info("No se encontraron nombres de productos, saltando...")
+
+    logger.info("No se encontró un producto similar en la base de datos.")
     return False
 
+
+
+def normalize_product_name(product_name):
+    # Convertir a minúsculas y quitar acentos
+    product_name = product_name.lower()
+    product_name = re.sub(r'[áàäâ]', 'a', product_name)
+    product_name = re.sub(r'[éèëê]', 'e', product_name)
+    product_name = re.sub(r'[íìïî]', 'i', product_name)
+    product_name = re.sub(r'[óòöô]', 'o', product_name)
+    product_name = re.sub(r'[úùüû]', 'u', product_name)
+    product_name = re.sub(r'[^a-z0-9\s]', '', product_name)
+
+    # Devolver el nombre normalizado
+    return product_name
 
 
 # Función para manejar la respuesta basada en el patrón detectado por cantidad y nombre
