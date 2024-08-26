@@ -29,6 +29,8 @@ system_context = {
     "content": " ".join(rules)  # Une las cadenas en rules en una sola cadena
 }
 
+LOWERCASE_WORDS = {"de", "con", "y", "en", "a", "el", "la", "los", "las", "un", "una", "unos", "unas"}
+
 # Definir constantes para patrones de expresiones regulares
 MENU_PATTERNS = [
     r'\bmen[úu]\b', r'\bcarta\b', r'\bver opciones\b', r'\bver men[úu]\b', r'\bver carta\b'
@@ -98,6 +100,7 @@ PRODUCT_BY_NAME_CATEGORY_PATTERNS = [
 # Bloquea si en la búsqueda de productos aparece una palabra que puede ser una categoría
 PRODUCT_BY_NAME_PATTERN = [
     r'\b(?:tienes|quiero|quisiera|necesito|me\s+gustar[ií]a(?:\s+pedir|ordenar)?|deseo)\s+(?:una|un|la|el)\s+(?!desayuno|almuerzo|segundo|entrada|snack|postre\b)([\w\s]+)\b',
+    r'\b(?:hay)\s+(?!desayuno|almuerzo|segundo|entrada|snack|postre\b)([\w\s]+)\b',
     r'\b(?:me\s+gustar[ií]a)\s+(?:pedir|ordenar)\s+(?:una|un)\s+(?!desayuno|almuerzo|segundo|entrada|snack|postre\b)([\w\s]+)\b',
     r'\b(?:quiero\s+la\s+opción\s+(?!desayuno|almuerzo|bebida|segundo|entrada|snack|postre\b)([\w\s]+))\b',
 ]
@@ -175,6 +178,12 @@ GREETING_PATTERNS = [
 ]
 
 
+def title_case_except_exceptions(text):
+    words = text.split()
+    titled_words = [word.capitalize() if word.lower() not in LOWERCASE_WORDS else word.lower() for word in words]
+    return " ".join(titled_words)
+
+
 # Función para manejar respuestas comunes
 async def handle_common_responses(update: Update, patterns, response_text):
     if match_pattern(patterns, update.message.text.lower()):
@@ -212,6 +221,12 @@ name_keywords = {
     'bolon': 'Bolón',
     'bolon con cafe': 'Bolón',
     'bolón con café': 'Bolón',
+    'bolón de verde': 'Bolón',
+    'bolón de verde con chicharrón': 'Bolón de verde con chicharrón + Café',
+    'bolón de verde con chicharron': 'Bolón de verde con chicharrón + Café',
+    'bolón de verde mixto': 'Bolón de verde mixto + Café',
+    'bistec de hígado': 'Bistec de hígado + Café',
+    'bistec de higado': 'Bistec de hígado + Café',
 }
 
 
@@ -219,26 +234,37 @@ name_keywords = {
 async def handle_response_by_name(update, patterns, handler_function):
     message = update.message.text.lower()
 
-    # Verificar si el mensaje contiene una palabra clave que corresponda a un producto
-    for keyword, product_name in name_keywords.items():
-        if keyword in message:
-            logger.info(f"Detected keyword: {keyword}, mapping to product name: {product_name}")
+    # Dividir el mensaje por posibles productos separados por "y"
+    possible_products = [prod.strip() for prod in message.split("y")]
+
+    found_products = []
+    for product in possible_products:
+        for keyword, product_name in name_keywords.items():
+            if keyword in product:
+                found_products.append(product_name)
+                break
+
+    # Si encontramos productos, llamamos al handler_function para cada uno
+    if found_products:
+        for product_name in found_products:
+            logger.info(f"Detected keyword, mapping to product name: {product_name}")
             fake_query = type('FakeQuery', (object,), {'edit_message_text': update.message.reply_text})
             await handler_function(fake_query, product_name)
-            return True
+        return True
 
-    # Proceder con la lógica habitual si no se encuentra una palabra clave específica
+    # Si no se encontró nada, seguir con la lógica habitual
     for pattern in patterns:
         match = re.search(pattern, message)
         if match:
-            product_name = match.group(1).strip().title()
+            product_name = title_case_except_exceptions(match.group(1).strip())
             logger.info(f"Product name extracted: {product_name}")
             fake_query = type('FakeQuery', (object,), {'edit_message_text': update.message.reply_text})
             await handler_function(fake_query, product_name)
             return True
         else:
-            logger.info("No se encontraron mensajes de nombres de productos, saltando...")
+            logger.info("No se encontraron nombres de productos, saltando...")
     return False
+
 
 
 # Función para manejar la respuesta basada en el patrón detectado por cantidad y nombre
@@ -447,8 +473,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             # Revisar si la respuesta incluye recomendaciones de productos
             # Evitar usar recomendaciones de GPT si son de productos específicos
             if any(keyword in gpt_response.lower() for keyword in ["recomiendo", "te sugiero", "prueba"]):
-                await update.message.reply_text("Lo siento, no puedo ofrecerte esa recomendación, intenta pedirme "
-                                                "otra cosa.")
+                await update.message.reply_text("Lamentablemente no encuentro información a tu pregunta procura "
+                                                "empezar con preguntas claras, puedes decir: quiero pedir tal cosa.")
             else:
                 sent_message = await update.message.reply_text(
                     gpt_response)  # Enviar la respuesta y guardar el message_id
