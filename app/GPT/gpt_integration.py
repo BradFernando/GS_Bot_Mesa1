@@ -2,6 +2,7 @@ import os
 import re
 
 import openai
+from fuzzywuzzy import process
 from sqlalchemy import select
 from telegram import Update
 from telegram.error import BadRequest
@@ -31,7 +32,6 @@ system_context = {
     "role": "system",
     "content": " ".join(rules)  # Une las cadenas en rules en una sola cadena
 }
-
 
 # Definir constantes para patrones de expresiones regulares
 MENU_PATTERNS = [
@@ -247,7 +247,7 @@ async def handle_response_by_name(update, handler_function):
 
         async with SessionLocal() as session:
             async with session.begin():
-                # Permitir coincidencia parcial en cualquier parte del nombre
+                # Búsqueda exacta
                 query = select(Product.name).where(Product.name.ilike(f'%{normalized_product_name}%'))
                 result = await session.execute(query)
                 products = result.scalars().all()
@@ -255,7 +255,6 @@ async def handle_response_by_name(update, handler_function):
                 # Si no se encuentran coincidencias exactas, buscar productos similares
                 if not products:
                     # Implementar una búsqueda más difusa si no hay coincidencias exactas
-                    from fuzzywuzzy import process
                     query_all = select(Product.name)
                     all_products = await session.execute(query_all)
                     all_products_list = all_products.scalars().all()
@@ -346,21 +345,25 @@ async def handle_response_by_price(update: Update, patterns, handler_function):
 
 
 # Función para manejar la respuesta basada en el patrón detectado por categoría
+# Función para manejar la respuesta basada en el patrón detectado por categoría
 async def handle_response_by_category(update: Update, patterns, handler_function):
     message = update.message.text.lower()
 
     # Mapeo de palabras clave a categorías específicas, asegurando que las más específicas se revisen primero
     category_keywords = {
+        'almuerzo': 'Almuerzos',
+        'sopa': 'Entradas',
+        'sopas': 'Entradas',
         'bebida deportiva': 'Bebidas Deportivas',
         'bebidas deportivas': 'Bebidas Deportivas',
         'desayuno': 'Desayunos',
         'bebida': 'Bebidas',  # 'bebida' se verifica después de 'bebida deportiva'
-        'almuerzo': 'Almuerzos',
         'segundo': 'Segundos',
         'entrada': 'Entradas',
         'snack': 'Snacks',
     }
 
+    # Verificar si el mensaje contiene palabras clave específicas
     for keyword, category in category_keywords.items():
         if keyword in message:
             logger.info(f"Detected keyword: {keyword}, mapping to category: {category}")
@@ -475,7 +478,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 model="gpt-3.5-turbo",
                 messages=messages,
                 max_tokens=150,
-                temperature=0.7,  # Un poco de creatividad para respuestas más naturales
+                temperature=0.5,  # Un poco de creatividad para respuestas más naturales
             )
 
             gpt_response = response.choices[0].message['content'].strip()
