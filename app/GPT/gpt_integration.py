@@ -32,7 +32,6 @@ system_context = {
     "content": " ".join(rules)  # Une las cadenas en rules en una sola cadena
 }
 
-LOWERCASE_WORDS = {"de", "con", "y", "en", "a", "al", "el", "la", "los", "las", "un", "una", "unos", "unas"}
 
 # Definir constantes para patrones de expresiones regulares
 MENU_PATTERNS = [
@@ -91,7 +90,7 @@ MOST_SOLD_SNACK_PATTERNS = [
 
 # Expresiones regulares para detectar categorías como "desayunos", "bebidas", etc.
 PRODUCT_BY_NAME_CATEGORY_PATTERNS = [
-    r'\b(?:qu[eé]|me\s+gustar[ií]a)\s+(?:ver|tener|una|la|un)\s+(desayunos?|bebidas?|entradas?|platos?|snacks?|almuerzos?|segundos?|postres?)\b',
+    r'\b(?:qu[eé]|me\s+gustar[ií]a)\s+(?:ver|tener|una|la|un)\s+(desayunos?|bebidas?|bebidas deportivas?|entradas?|platos?|snacks?|almuerzos?|segundos?|postres?)\b',
     r'\b(?:mu[ée]strame|ens[ée][ñn]ame|ver|quiero\s+ver)\s+(?:el\s+)?(?:men[úu]|lista)\s+(?:de\s+)?(\w+)\b',
     r'\b(?:productos|art[ií]culos|opciones|cosas)\s+(?:de\s+la\s+categor[ií]a\s+)?(\w+)\b',
     r'\b(?:categor[ií]a\s+de\s+)?(\w+)\s+(?:productos|art[ií]culos|opciones|men[úu])\b',
@@ -184,12 +183,6 @@ GREETING_PATTERNS = [
 ]
 
 
-def title_case_except_exceptions(text):
-    words = text.split()
-    titled_words = [word.capitalize() if word.lower() not in LOWERCASE_WORDS else word.lower() for word in words]
-    return " ".join(titled_words)
-
-
 # Función para manejar respuestas comunes
 async def handle_common_responses(update: Update, patterns, response_text):
     if match_pattern(patterns, update.message.text.lower()):
@@ -220,37 +213,7 @@ async def handle_response(update, patterns, handler_function):
     return False
 
 
-# Función para manejar la respuesta basada en el patrón detectado por nombre
-async def handle_response_by_name(update, patterns, handler_function):
-    message = update.message.text.lower()
-
-    # Extracción directa del nombre del producto evitando categorías comunes
-    match = re.search(
-        r'\b(?:tienes|quiero|quisiera|necesito|me\s+gustar[ií]a(?:\s+pedir|ordenar)?|deseo)\s+(?:una|un|la|el)\s+(?!desayuno|almuerzo|segundo|entrada|snack|postre\b)([\w\s]+)\b',
-        message
-    )
-
-    if match:
-        product_name = match.group(1).strip().title()  # Mantén el nombre tal cual
-
-        async with SessionLocal() as session:
-            async with session.begin():
-                # Permitir coincidencia parcial en cualquier parte del nombre
-                query = select(Product.name).where(Product.name.ilike(f'%{product_name}%')).limit(1)
-                result = await session.execute(query)
-                product_name = result.scalar_one_or_none()
-
-        if product_name:
-            logger.info(f"Producto encontrado en la base de datos: {product_name}")
-            fake_query = type('FakeQuery', (object,), {'edit_message_text': update.message.reply_text})
-            await handler_function(fake_query, product_name)
-            return True
-
-    logger.info("No se encontró un producto similar en la base de datos.")
-    return False
-
-
-
+# Función para normalizar el nombre del producto
 def normalize_product_name(product_name):
     # Convertir a minúsculas y quitar acentos
     product_name = product_name.lower()
@@ -263,6 +226,54 @@ def normalize_product_name(product_name):
 
     # Devolver el nombre normalizado
     return product_name
+
+
+# Función para manejar la respuesta basada en el patrón detectado por nombre
+async def handle_response_by_name(update, handler_function):
+    message = update.message.text.lower()
+
+    # Extracción directa del nombre del producto evitando categorías comunes
+    match = re.search(
+        r'\b(?:tienes|quiero|dame|quisiera|necesito|me\s+gustar[ií]a(?:\s+pedir|ordenar)?|deseo)\s+(?:una|un|la|el)\s+(?!desayuno|almuerzo|segundo|entrada|snack|postre\b)([\w\s]+)\b',
+        message
+    )
+
+    if match:
+        product_name = match.group(1).strip()
+
+        # Normalizar el nombre del producto
+        normalized_product_name = normalize_product_name(product_name)
+        logger.info(f"Normalized product name: {normalized_product_name}")
+
+        async with SessionLocal() as session:
+            async with session.begin():
+                # Permitir coincidencia parcial en cualquier parte del nombre
+                query = select(Product.name).where(Product.name.ilike(f'%{normalized_product_name}%'))
+                result = await session.execute(query)
+                products = result.scalars().all()
+
+                # Si no se encuentran coincidencias exactas, buscar productos similares
+                if not products:
+                    # Implementar una búsqueda más difusa si no hay coincidencias exactas
+                    from fuzzywuzzy import process
+                    query_all = select(Product.name)
+                    all_products = await session.execute(query_all)
+                    all_products_list = all_products.scalars().all()
+
+                    # Encontrar el producto más similar usando fuzzywuzzy
+                    best_match = process.extractOne(normalized_product_name, all_products_list)
+                    if best_match and best_match[1] > 70:  # Umbral de similitud
+                        products = [best_match[0]]
+
+        if products:
+            product_name_to_use = products[0]  # Usar solo el primer producto encontrado
+            logger.info(f"Producto encontrado en la base de datos: {product_name_to_use}")
+            fake_query = type('FakeQuery', (object,), {'edit_message_text': update.message.reply_text})
+            await handler_function(fake_query, product_name_to_use)
+            return True
+
+    logger.info("No se encontró un producto similar en la base de datos.")
+    return False
 
 
 # Función para manejar la respuesta basada en el patrón detectado por cantidad y nombre
@@ -338,12 +349,13 @@ async def handle_response_by_price(update: Update, patterns, handler_function):
 async def handle_response_by_category(update: Update, patterns, handler_function):
     message = update.message.text.lower()
 
-    # Mapeo de palabras clave a categorías específicas
+    # Mapeo de palabras clave a categorías específicas, asegurando que las más específicas se revisen primero
     category_keywords = {
+        'bebida deportiva': 'Bebidas Deportivas',
+        'bebidas deportivas': 'Bebidas Deportivas',
         'desayuno': 'Desayunos',
-        'bebida': 'Bebidas',
-        'bebida deportiva': 'Bebidas deportivas',
-        'almuerzo': 'Almuerzos',  # Este es el que mapea a las categorías combinadas
+        'bebida': 'Bebidas',  # 'bebida' se verifica después de 'bebida deportiva'
+        'almuerzo': 'Almuerzos',
         'segundo': 'Segundos',
         'entrada': 'Entradas',
         'snack': 'Snacks',
@@ -439,7 +451,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     # 3. Si no es una categoría, verificar si es un producto específico
-    if await handle_response_by_name(update, PRODUCT_BY_NAME_PATTERN, show_product_by_name):
+    if await handle_response_by_name(update, show_product_by_name):
         return
 
     # 4. Manejar cantidades de productos
