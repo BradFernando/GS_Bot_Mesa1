@@ -11,7 +11,7 @@ from app.utils.responses import responses
 
 logger = setup_logging()
 
-bot_name = "MesaBot"
+bot_name = "Mesa1_Bot"
 
 # Almacena el chat_id y message_id del mensaje de saludo
 greeting_messages = {}
@@ -136,7 +136,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif query.data == "return_categories":
         logger.info("Returning to categories")
         await show_categories(query)
-
 
 
 def run_bot():
