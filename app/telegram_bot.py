@@ -11,7 +11,7 @@ from app.utils.responses import responses
 
 logger = setup_logging()
 
-bot_name = "Mesa1_Bot"
+bot_name = "MesaBot"
 
 # Almacena el chat_id y message_id del mensaje de saludo
 greeting_messages = {}
