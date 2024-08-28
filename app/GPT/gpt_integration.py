@@ -348,7 +348,6 @@ async def handle_response_by_quantity(update: Update, patterns, handler_function
     return False
 
 
-# Función para manejar la respuesta basada en el patrón detectado por cantidad
 # Función para manejar la respuesta basada en el patrón detectado por cantidad de producto
 async def handle_response_by_quantityofproduct(update: Update, patterns, handler_function):
     message = update.message.text.lower()
